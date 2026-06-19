@@ -210,7 +210,7 @@ class Go2Connection:
 
     #decrypt RSA key from firmware version >=1.1.8
     def decrypt_con_notify_data(self, encrypted_b64: str) -> str:
-        key = bytes([232, 86, 130, 189, 22, 84, 155, 0, 142, 4, 166, 104, 43, 179, 235, 227])
+        key = bytes([175, 65, 149, 214, 125, 212, 213, 133, 241, 97, 247, 224, 147, 44, 42, 168])
         data = base64.b64decode(encrypted_b64)
         if len(data) < 28:
             raise ValueError("Decryption failed: input data too short")
@@ -258,7 +258,7 @@ class Go2Connection:
                 if not data1:
                     raise Go2ConnectionError("No data1 field in public key response")
 
-                if data2 == 2:
+                if data2 == 3:
                     data1 = self.decrypt_con_notify_data(data1)
                 # Extract the public key from 'data1'
                 public_key_pem = data1[10:len(data1)-10]

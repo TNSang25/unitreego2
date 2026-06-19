@@ -19,7 +19,7 @@ def generate_launch_description():
     robot_token = os.getenv('ROBOT_TOKEN', '')
     robot_ip = os.getenv('ROBOT_IP', '')
     robot_ip_list = robot_ip.replace(" ", "").split(",") if robot_ip else []
-    map_file = os.getenv('MAP_FILE', '')
+    map_file = os.getenv('MAP_FILE', '/home/ngocsang/ros2_ws/src/go2_robot_sdk/map/cty.yaml')
     conn_type = os.getenv('CONN_TYPE', 'webrtc')
     
     # Determine connection mode
@@ -128,8 +128,8 @@ def generate_launch_description():
             ],
             parameters=[{
                 'target_frame': 'base_link',
-                'max_height': 2.0,
-                'min_height': -0.2,
+                'max_height': 0.5,
+                'min_height': 0.2,
                 'angle_min': -3.14159,
                 'angle_max': 3.14159,
                 'angle_increment': 0.0174533,

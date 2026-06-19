@@ -16,7 +16,7 @@ def generate_launch_description():
     """Generate launch description for Go2 mapping mode"""
     
     # Environment variables
-    robot_token = os.getenv('ROBOT_TOKEN', '')
+    robot_token = os.getenv('ROBOT_TOKEN', 'af4195d67dd4d585f161f7e0932c2aa8')
     robot_ip = os.getenv('ROBOT_IP', '')
     robot_ip_list = robot_ip.replace(" ", "").split(",") if robot_ip else []
     map_name = os.getenv('MAP_NAME', 'my_map')
@@ -105,10 +105,10 @@ def generate_launch_description():
             executable='pointcloud_aggregator_node',
             name='pointcloud_aggregator',
             parameters=[{
-                'max_range': 20.0,
+                'max_range': 10.0,
                 'min_range': 0.3,
-                'height_filter_min': -1.0,
-                'height_filter_max': 3.0,
+                'height_filter_min': 0.3,
+                'height_filter_max': 0.5,
                 'downsample_rate': 1,
                 'publish_rate': 20.0
             }],
@@ -124,16 +124,16 @@ def generate_launch_description():
             ],
             parameters=[{
                 'target_frame': 'base_link',
-                'max_height': 3.0,
-                'min_height': -1.0,
+                'max_height': 0.5,
+                'min_height': 0.3,
                 'angle_min': -3.14159,
                 'angle_max': 3.14159,
                 'angle_increment': 0.00872665,
                 'scan_time': 0.1,
                 'range_min': 0.3,
-                'range_max': 20.0,
+                'range_max': 10.0,
                 'use_inf': True,
-                'concurrency_level': 1,
+                'concurrency_level': 2,
             }],
             output='screen',
         ),

@@ -157,8 +157,8 @@ class Go2NodeFactory:
                 ],
                 parameters=[{
                     'target_frame': f'{namespace}/base_link',
-                    'max_height': 2.0,
-                    'min_height': -0.2,
+                    'max_height': 0.5,
+                    'min_height': 0.2,
                     'angle_min': -3.14159,
                     'angle_max': 3.14159,
                     'angle_increment': 0.00872665,  # 0.5 degrees
@@ -181,8 +181,8 @@ class Go2NodeFactory:
                 ],
                 parameters=[{
                     'target_frame': 'base_link',
-                    'max_height': 2.0,
-                    'min_height': -0.2,
+                    'max_height': 0.5,
+                    'min_height': 0.2,
                     'angle_min': -3.14159,
                     'angle_max': 3.14159,
                     'angle_increment': 0.00872665,  # 0.5 degrees
