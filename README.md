@@ -1,60 +1,6 @@
-![Ros2 SDK](https://github.com/abizovnuralem/go2_ros2_sdk/assets/33475993/49edebbe-11b6-49c6-b82d-bc46257674bd)
+
 
 # Welcome to the Unitree Go2 ROS2 SDK Project!
-
-> [!IMPORTANT]  
-> I hadn’t updated this repository in a long time, and a lot of changes accumulated, making the project somewhat messy. I’ve finally found time to refactor everything using Clean Architecture principles. Previously, the LiDAR stream ran at around 2 Hz; it now updates at 7 Hz. However, joint states still arrive at 1 Hz, so you may notice some URDF update lag—that’s expected with the new firmware (v1.1.7). We’ll need to find a workaround for that.
-
-[![IsaacSim](https://img.shields.io/badge/IsaacSim-4.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
-[![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://docs.python.org/3/whatsnew/3.10.html)
-[![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/22.04/)
-[![Windows platform](https://img.shields.io/badge/platform-windows--64-orange.svg)](https://www.microsoft.com/en-us/)
-![ROS2 Build](https://github.com/abizovnuralem/go2_ros2_sdk/actions/workflows/ros_build.yaml/badge.svg)
-[![License](https://img.shields.io/badge/license-BSD--2-yellow.svg)](https://opensource.org/licenses/BSD-2-Clause)
-
-
-We are happy to present you our integration of the Unitree Go2 with ROS2 over Wi-Fi, that was designed by the talented [@tfoldi](https://github.com/tfoldi). You can explore his groundbreaking work at [go2-webrtc](https://github.com/tfoldi/go2-webrtc).
-
-This repo will empower your Unitree GO2 AIR/PRO/EDU robots with ROS2 capabilities, using both WebRTC (Wi-Fi) and CycloneDDS (Ethernet) protocols.
-
-If you are using WebRTC (Wi-Fi) protocol, close the connection with a mobile app before connecting to the robot.
-
-
-## Project RoadMap:
-
-1. URDF :white_check_mark: 
-2. Joint states sync in real time :white_check_mark: 
-3. IMU sync in real time :white_check_mark: 
-4. Joystick control in real time :white_check_mark: 
-6. Go2 topics info in real time :white_check_mark: 
-7. Foot force sensors info in real time :white_check_mark: 
-8. Lidar stream (added pointCloud2) :white_check_mark: 
-9. Camera stream :white_check_mark:
-10. Foxglove bridge :white_check_mark:
-11. Laser Scan :white_check_mark:
-12. Multi robot support :white_check_mark:
-13. WebRTC and CycloneDDS support :white_check_mark:
-14. Creating a PointCloud map and store it :white_check_mark:
-15. SLAM (slam_toolbox) :white_check_mark:
-16. Navigation (nav2) :white_check_mark:
-17. Object detection (coco) :white_check_mark:
-18. AutoPilot
-
-## Your feedback and support mean the world to us. 
-
-If you're as enthusiastic about this project as we are, please consider giving it a :star: star!!!
-
-Your encouragement fuels our passion and helps us develop our RoadMap further. We welcome any help or suggestions you can offer!
-
-Together, let's push the boundaries of what's possible with the Unitree Go2 and ROS2!
-
-## Exciting Features:
-
-:sparkles: Full ROS2 SDK support for your Unitree GO2
-
-:robot: Compatible with AIR, PRO, and EDU variants
-
-:footprints: Access to foot force sensors feedback (available on some GO2 PRO models or EDU)
 
 
 ## Real time Go2 Air/PRO/EDU joints sync:
@@ -84,7 +30,7 @@ Tested systems and ROS2 distro
 ```shell
 mkdir -p ros2_ws
 cd ros2_ws
-git clone --recurse-submodules https://github.com/abizovnuralem/go2_ros2_sdk.git src
+git clone --recurse-submodules https://github.com/TNSang25/unitreego2.git src
 sudo apt install ros-$ROS_DISTRO-image-tools
 sudo apt install ros-$ROS_DISTRO-vision-msgs
 
@@ -102,14 +48,7 @@ rosdep install --from-paths src --ignore-src -r -y
 colcon build
 ```
 
-## Running via Docker
-Can set environment variables beforehand, hardcoded in docker/docker-compose.yaml, or as shown below. 
 
-Run:
-```shell
-cd docker
-ROBOT_IP=<ROBOT_IP> CONN_TYPE=<webrtc/cyclonedds> docker-compose up --build
-```
 
 ## Usage
 
