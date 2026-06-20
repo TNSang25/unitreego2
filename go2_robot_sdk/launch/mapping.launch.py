@@ -101,18 +101,21 @@ def generate_launch_description():
         ),
         # Point cloud aggregator - maximized for full coverage
         Node(
-            package='lidar_processor_cpp',
-            executable='pointcloud_aggregator_node',
-            name='pointcloud_aggregator',
-            parameters=[{
-                'max_range': 10.0,
-                'min_range': 0.3,
-                'height_filter_min': 0.3,
-                'height_filter_max': 0.5,
-                'downsample_rate': 1,
-                'publish_rate': 20.0
-            }],
-        ),
+    package='lidar_processor_cpp',
+    executable='pointcloud_aggregator_node',
+    name='pointcloud_aggregator',
+    remappings=[
+        ('cloud_in', '/point_cloud2'),  # nhận từ lidar_to_pointcloud_node
+    ],
+    parameters=[{
+        'max_range': 10.0,
+        'min_range': 0.15,
+        'height_filter_min': 0.05,
+        'height_filter_max': 0.5,
+        'downsample_rate': 1,
+        'publish_rate': 20.0
+    }],
+),
         # PointCloud to LaserScan converter - maximum coverage
         Node(
             package='pointcloud_to_laserscan',
@@ -125,12 +128,12 @@ def generate_launch_description():
             parameters=[{
                 'target_frame': 'base_link',
                 'max_height': 0.5,
-                'min_height': 0.3,
+                'min_height': 0.05,
                 'angle_min': -3.14159,
                 'angle_max': 3.14159,
                 'angle_increment': 0.00872665,
                 'scan_time': 0.1,
-                'range_min': 0.3,
+                'range_min': 0.15,
                 'range_max': 10.0,
                 'use_inf': True,
                 'concurrency_level': 2,
