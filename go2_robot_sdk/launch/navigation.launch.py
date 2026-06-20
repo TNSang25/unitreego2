@@ -16,10 +16,10 @@ def generate_launch_description():
     """Generate launch description for Go2 navigation mode"""
     
     # Environment variables
-    robot_token = os.getenv('ROBOT_TOKEN', '')
+    robot_token = os.getenv('ROBOT_TOKEN', 'af4195d67dd4d585f161f7e0932c2aa8')
     robot_ip = os.getenv('ROBOT_IP', '')
     robot_ip_list = robot_ip.replace(" ", "").split(",") if robot_ip else []
-    map_file = os.getenv('MAP_FILE', '/home/ngocsang/ros2_ws/src/go2_robot_sdk/map/cty.yaml')
+    map_file = os.getenv('MAP_FILE', '/home/acer/ros2_ws/src/go2_robot_sdk/map/cty.yaml')
     conn_type = os.getenv('CONN_TYPE', 'webrtc')
     
     # Determine connection mode
@@ -86,7 +86,8 @@ def generate_launch_description():
             parameters=[{
                 'robot_ip': robot_ip,
                 'token': robot_token,
-                'conn_type': conn_type
+                'conn_type': conn_type,
+                'enable_video': False
             }],
         ),
         # LiDAR processing node
@@ -108,6 +109,9 @@ def generate_launch_description():
             package='lidar_processor_cpp',
             executable='pointcloud_aggregator_node',
             name='pointcloud_aggregator',
+            remappings=[
+                ('cloud_in', '/point_cloud2'),
+            ],
             parameters=[{
                 'max_range': 20.0,
                 'min_range': 0.1,

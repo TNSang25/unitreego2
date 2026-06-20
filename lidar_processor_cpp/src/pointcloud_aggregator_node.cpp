@@ -31,6 +31,7 @@ PointCloudAggregatorNode::PointCloudAggregatorNode()
 {
   declareParameters();
   config_ = loadConfiguration();
+  statistical_filter_ = std::make_unique<StatisticalFilter>(30, 1.0);
   setupSubscriptions();
   setupPublishers();
   RCLCPP_INFO(this->get_logger(), "PointCloud Aggregator Node ready");
@@ -142,7 +143,23 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr PointCloudAggregatorNode::applyFilters(
   out->width    = out->points.size();
   out->height   = 1;
   out->is_dense = true;
-  return out;
+  
+  if (out->points.empty()) return out;
+
+  // VoxelGrid downsampling to reduce points uniformly
+  pcl::PointCloud<pcl::PointXYZ>::Ptr voxel_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
+  voxel_filter.setInputCloud(out);
+  // 5cm voxel size to reduce point density and noise
+  voxel_filter.setLeafSize(0.05f, 0.05f, 0.05f); 
+  voxel_filter.filter(*voxel_cloud);
+
+  // Statistical Outlier Removal to remove scattered noise
+  if (voxel_cloud->points.size() > 50 && statistical_filter_) {
+    return statistical_filter_->filterPoints(voxel_cloud);
+  }
+
+  return voxel_cloud;
 }
 
 void PointCloudAggregatorNode::publishCallback() {}
@@ -151,7 +168,8 @@ void PointCloudAggregatorNode::logConfiguration()
 {
   RCLCPP_INFO(this->get_logger(), "  Range : %.2f-%.2fm", config_.min_range, config_.max_range);
   RCLCPP_INFO(this->get_logger(), "  Height: %.2f-%.2fm", config_.height_filter_min, config_.height_filter_max);
-  RCLCPP_INFO(this->get_logger(), "  StatisticalOutlierRemoval: DISABLED");
+  RCLCPP_INFO(this->get_logger(), "  VoxelGrid: 0.05m");
+  RCLCPP_INFO(this->get_logger(), "  StatisticalOutlierRemoval: ENABLED (K=30, std=1.0)");
 }
 
 }  // namespace lidar_processor_cpp
