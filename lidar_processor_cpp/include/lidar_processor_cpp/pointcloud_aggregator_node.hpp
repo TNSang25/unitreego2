@@ -14,6 +14,7 @@
 #include "pcl/point_cloud.h"
 #include "pcl/point_types.h"
 #include "pcl/filters/statistical_outlier_removal.h"
+#include "pcl/filters/radius_outlier_removal.h"
 #include "pcl/filters/voxel_grid.h"
 #include "pcl_conversions/pcl_conversions.h"
 
@@ -28,6 +29,13 @@ struct AggregatorConfig
   double height_filter_max;  // Maximum height (z-coordinate)
   int downsample_rate;       // Keep every Nth point
   double publish_rate;       // Hz
+  double voxel_leaf_size;    // VoxelGrid leaf size; <=0 disables (upstream already voxelizes)
+  bool sor_enable;           // Enable Statistical Outlier Removal (expensive)
+  int sor_mean_k;            // SOR neighbours to analyse per point
+  double sor_std_dev;        // SOR standard-deviation multiplier
+  bool ror_enable;           // Enable Radius Outlier Removal (drop isolated points)
+  double ror_radius;         // ROR search radius (m)
+  int ror_min_neighbors;     // ROR: min neighbours within radius to keep a point
 };
 
 class StatisticalFilter

@@ -82,38 +82,37 @@ def generate_launch_description():
             parameters=[{
                 'robot_ip': robot_ip,
                 'token': robot_token,
-                'conn_type': conn_type
+                'conn_type': conn_type,
+                'lidar_publish_rate': 15.0,  # chặn firehose LiDAR (robot bắn ~1000Hz)
+                'lidar_voxel_size': 0.06,    # voxel 6cm ở driver: giảm điểm -> nhẹ CPU/băng thông hơn nữa
             }],
         ),
-        # LiDAR processing node
-        Node(
-            package='lidar_processor_cpp',
-            executable='lidar_to_pointcloud_node',
-            name='lidar_to_pointcloud',
-            remappings=[
-                ('robot0/point_cloud2', 'point_cloud2'),
-            ] if conn_mode == 'single' else [],
-            parameters=[{
-                'robot_ip_lst': robot_ip_list,
-                'map_name': map_name,
-                'map_save': save_map
-            }],
-        ),
+        # LƯU Ý: lidar_to_pointcloud (gộp cloud đa-robot) chỉ thêm ở MULTI mode,
+        # xem khối `if conn_mode != 'single'` bên dưới. Ở single mode driver đã
+        # publish /point_cloud2 trực tiếp -> thêm node này sẽ tự-lặp (sub+pub cùng
+        # /point_cloud2) gây firehose ~126Hz/227MB/s, nghẽn CPU, đứng /scan.
         # Point cloud aggregator - maximized for full coverage
         Node(
     package='lidar_processor_cpp',
     executable='pointcloud_aggregator_node',
     name='pointcloud_aggregator',
     remappings=[
-        ('cloud_in', '/point_cloud2'),  # nhận từ lidar_to_pointcloud_node
+        ('cloud_in', '/point_cloud2'),  # single: nhận thẳng từ driver; multi: từ lidar_to_pointcloud
     ],
     parameters=[{
         'max_range': 10.0,
         'min_range': 0.15,
-        'height_filter_min': 0.05,
-        'height_filter_max': 0.5,
+        'height_filter_min': 0.2,   # chỉ giữ lát 0.2-0.4m (z trong frame odom ~ so với mặt đất)
+        'height_filter_max': 0.4,
         'downsample_rate': 1,
-        'publish_rate': 20.0
+        'publish_rate': 20.0,
+        'voxel_leaf_size': 0.05,    # 5cm: single mode bỏ lidar_to_pointcloud nên phải voxel ở đây
+        'sor_enable': True,         # tắt (False) nếu cần giảm CPU thêm
+        'sor_mean_k': 12,           # nhẹ hơn mặc định cũ (30)
+        'sor_std_dev': 1.0,
+        'ror_enable': True,         # lọc điểm lẻ loi: quanh nó < ror_min_neighbors điểm thì bỏ
+        'ror_radius': 0.15,         # bán kính tìm hàng xóm (m)
+        'ror_min_neighbors': 3,     # cần >=3 điểm trong bán kính, không thì coi là nhiễu -> bỏ
     }],
 ),
         # PointCloud to LaserScan converter - maximum coverage
@@ -127,35 +126,37 @@ def generate_launch_description():
             ],
             parameters=[{
                 'target_frame': 'base_link',
-                'max_height': 0.5,
-                'min_height': 0.05,
+                'max_height': 2.0,   # để rộng: lọc chiều cao đã làm ở aggregator (lát 0.2-0.4m)
+                'min_height': -1.0,  # tránh cắt 2 lần lệch frame (laserscan lọc theo base_link)
                 'angle_min': -3.14159,
                 'angle_max': 3.14159,
                 'angle_increment': 0.00872665,
                 'scan_time': 0.1,
-                'range_min': 0.15,
+                'range_min': 0.35,   # loại chân/thân robot (chân Go2 ~0.2-0.3m) khỏi scan -> hết đốm ảo quanh robot
                 'range_max': 10.0,
                 'use_inf': True,
                 'concurrency_level': 2,
             }],
             output='screen',
         ),
-        # TTS Node
-        Node(
-            package='speech_processor',
-            executable='tts_node',
-            name='tts_node',
-            parameters=[{
-                'api_key': os.getenv('ELEVENLABS_API_KEY', ''),
-                'provider': 'elevenlabs',
-                'voice_name': 'XrExE9yKIg1WjnnlVkGX',
-                'local_playback': False,
-                'use_cache': True,
-                'audio_quality': 'standard'
-            }],
-        ),
     ]
-    
+
+    # Chỉ MULTI mode mới cần gộp các cloud robot{i}/point_cloud2 -> /point_cloud2.
+    # Single mode: bỏ qua (driver đã publish /point_cloud2; thêm vào sẽ tự-lặp).
+    if conn_mode != 'single':
+        core_nodes.append(
+            Node(
+                package='lidar_processor_cpp',
+                executable='lidar_to_pointcloud_node',
+                name='lidar_to_pointcloud',
+                parameters=[{
+                    'robot_ip_lst': robot_ip_list,
+                    'map_name': map_name,
+                    'map_save': save_map,
+                }],
+            )
+        )
+
     # Teleop nodes
     teleop_nodes = [
         Node(

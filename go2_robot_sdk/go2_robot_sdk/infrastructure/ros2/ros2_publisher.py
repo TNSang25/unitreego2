@@ -3,7 +3,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import logging
+import math
+import time
 
+import numpy as np
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
@@ -69,10 +72,24 @@ class ROS2Publisher(IRobotDataPublisher):
         odom_trans.transform.translation.y = float(position['y'])
         odom_trans.transform.translation.z = float(position['z']) + 0.07
 
-        odom_trans.transform.rotation.x = float(orientation['x'])
-        odom_trans.transform.rotation.y = float(orientation['y'])
-        odom_trans.transform.rotation.z = float(orientation['z'])
-        odom_trans.transform.rotation.w = float(orientation['w'])
+        ox, oy = float(orientation['x']), float(orientation['y'])
+        oz, ow = float(orientation['z']), float(orientation['w'])
+
+        # 2D SLAM trên robot 4 chân: thân Go2 lắc pitch/roll mỗi bước -> nếu giữ
+        # nguyên thì laserscan (chiếu xuống base_link) bị nghiêng & lắc. Bỏ roll/pitch,
+        # chỉ giữ yaw -> base_link luôn phẳng -> scan luôn ngang, ổn định.
+        if getattr(self.config, 'flatten_base_rp', True):
+            yaw = math.atan2(2.0 * (ow * oz + ox * oy),
+                             1.0 - 2.0 * (oy * oy + oz * oz))
+            ox = 0.0
+            oy = 0.0
+            oz = math.sin(yaw * 0.5)
+            ow = math.cos(yaw * 0.5)
+
+        odom_trans.transform.rotation.x = ox
+        odom_trans.transform.rotation.y = oy
+        odom_trans.transform.rotation.z = oz
+        odom_trans.transform.rotation.w = ow
 
         self.broadcaster.sendTransform(odom_trans)
 
@@ -188,27 +205,54 @@ class ROS2Publisher(IRobotDataPublisher):
             robot_idx = int(robot_data.robot_id)
             lidar = robot_data.lidar_data
 
+            t0 = time.monotonic()
             points = update_meshes_for_cloud2(
                 lidar.positions,
                 lidar.uvs,
                 lidar.resolution,
                 lidar.origin,
-                0
+                0,
+                self.config.lidar_voxel_size
             )
+            t1 = time.monotonic()
 
-            point_cloud = PointCloud2()
-            point_cloud.header = Header(frame_id="odom")
-            point_cloud.header.stamp = self.node.get_clock().now().to_msg()
-            
+            header = Header(frame_id="odom")
+            header.stamp = self.node.get_clock().now().to_msg()
+
             fields = [
                 PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
                 PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
                 PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
                 PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1),
             ]
-            
-            point_cloud = point_cloud2.create_cloud(point_cloud.header, fields, points)
+
+            # Fast PointCloud2 build: serialize the (N,4) float32 array directly with
+            # numpy.tobytes() instead of point_cloud2.create_cloud(), whose per-point
+            # Python loop is ~50x slower for tens of thousands of points and caps the rate.
+            pts = np.ascontiguousarray(points, dtype=np.float32)
+            n = int(pts.shape[0]) if pts.ndim == 2 else 0
+
+            point_cloud = PointCloud2()
+            point_cloud.header = header
+            point_cloud.height = 1
+            point_cloud.width = n
+            point_cloud.fields = fields
+            point_cloud.is_bigendian = False
+            point_cloud.point_step = 16
+            point_cloud.row_step = 16 * n
+            point_cloud.is_dense = True
+            point_cloud.data = pts.tobytes()
             self.publishers['lidar'][robot_idx].publish(point_cloud)
+            t2 = time.monotonic()
+
+            # Throttled timing breakdown so we can see where the per-cloud cost goes
+            # (mesh = decode->numpy, build = serialize+publish). One line every ~5s.
+            if t2 - getattr(self, '_lidar_log_t', 0.0) > 5.0:
+                self._lidar_log_t = t2
+                self.node.get_logger().info(
+                    f"[lidar] pts={n} mesh={(t1 - t0) * 1000:.0f}ms "
+                    f"build={(t2 - t1) * 1000:.0f}ms"
+                )
 
         except Exception as e:
             logger.error(f"Error publishing lidar data: {e}")

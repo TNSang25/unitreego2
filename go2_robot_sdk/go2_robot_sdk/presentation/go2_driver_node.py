@@ -15,7 +15,7 @@ from rclpy.qos_overriding_options import QoSOverridingOptions
 from rcl_interfaces.msg import SetParametersResult
 from tf2_ros import TransformBroadcaster
 
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import Twist, TwistStamped, PoseStamped
 from go2_interfaces.msg import Go2State, IMU
 from go2_interfaces.msg import LowState, VoxelMapCompressed, WebRtcReq
 from sensor_msgs.msg import PointCloud2, JointState, Joy, Image, CameraInfo
@@ -54,7 +54,9 @@ class Go2DriverNode(Node):
             broadcaster=self.broadcaster
         )
         
-        self.robot_data_service = RobotDataService(self.ros2_publisher)
+        lidar_rate = self.get_parameter('lidar_publish_rate').get_parameter_value().double_value
+        self.robot_data_service = RobotDataService(self.ros2_publisher, lidar_max_rate=lidar_rate)
+        self.get_logger().info(f"LiDAR publish throttle: {lidar_rate} Hz")
         
         self.webrtc_adapter = WebRTCAdapter(
             config=self.config,
@@ -91,6 +93,9 @@ class Go2DriverNode(Node):
                 ('decode_lidar', True),
                 ('publish_raw_voxel', False),
                 ('obstacle_avoidance', False),
+                ('lidar_publish_rate', 15.0),  # Hz; throttle LiDAR (0 = no limit)
+                ('lidar_voxel_size', 0.05),    # m; voxel-downsample LiDAR before publish (0 = off)
+                ('flatten_base_rp', True),     # bỏ roll/pitch trong odom->base_link -> scan không nghiêng/lắc
             ]
         )
 
@@ -104,7 +109,9 @@ class Go2DriverNode(Node):
             enable_video=self.get_parameter('enable_video').get_parameter_value().bool_value,
             decode_lidar=self.get_parameter('decode_lidar').get_parameter_value().bool_value,
             publish_raw_voxel=self.get_parameter('publish_raw_voxel').get_parameter_value().bool_value,
-            obstacle_avoidance=self.get_parameter('obstacle_avoidance').get_parameter_value().bool_value
+            obstacle_avoidance=self.get_parameter('obstacle_avoidance').get_parameter_value().bool_value,
+            lidar_voxel_size=self.get_parameter('lidar_voxel_size').get_parameter_value().double_value,
+            flatten_base_rp=self.get_parameter('flatten_base_rp').get_parameter_value().bool_value
         )
 
         # Log configuration
@@ -201,7 +208,7 @@ class Go2DriverNode(Node):
         
         if self.config.conn_mode == 'single':
             self.create_subscription(
-                Twist, 'cmd_vel_out',
+                TwistStamped, 'cmd_vel_out',
                 lambda msg: self._on_cmd_vel(msg, "0"), qos_profile)
             self.create_subscription(
                 WebRtcReq, 'webrtc_req',
@@ -209,7 +216,7 @@ class Go2DriverNode(Node):
         else:
             for i in range(num_robots):
                 self.create_subscription(
-                    Twist, f'robot{i}/cmd_vel_out',
+                    TwistStamped, f'robot{i}/cmd_vel_out',
                     lambda msg, robot_id=str(i): self._on_cmd_vel(msg, robot_id), qos_profile)
                 self.create_subscription(
                     WebRtcReq, f'robot{i}/webrtc_req',
@@ -258,10 +265,11 @@ class Go2DriverNode(Node):
             
         return result
 
-    def _on_cmd_vel(self, msg: Twist, robot_id: str) -> None:
-        """Callback for movement commands"""
+    def _on_cmd_vel(self, msg: TwistStamped, robot_id: str) -> None:
+        """Callback for movement commands (twist_mux/Nav2 phát TwistStamped)"""
+        t = msg.twist
         self.robot_control_service.handle_cmd_vel(
-            msg.linear.x, msg.linear.y, msg.angular.z, 
+            t.linear.x, t.linear.y, t.angular.z,
             robot_id, self.config.obstacle_avoidance
         )
 
@@ -284,35 +292,56 @@ class Go2DriverNode(Node):
         self.robot_data_service.process_webrtc_message(msg, robot_id)
 
     async def _on_video_frame(self, track: MediaStreamTrack, robot_id: str) -> None:
-        """Callback for processing video frames"""
+        """Callback for processing video frames.
+
+        The reader task always keeps only the *latest* decoded frame so that
+        slow downstream processing never makes latency accumulate (stale frames
+        are dropped, not queued). The heavy work (BGR conversion + publish) runs
+        in the default executor so it never blocks the asyncio event loop, which
+        also serves the control data channel and ICE.
+        """
         logger.info(f"Video frame received for robot {robot_id}")
+        loop = asyncio.get_event_loop()
+        latest_frame = None
+        new_frame = asyncio.Event()
 
-        while True:
-            try:
-                frame = await track.recv()
-                img = frame.to_ndarray(format="bgr24")
+        async def reader():
+            nonlocal latest_frame
+            while True:
+                # Read as fast as frames arrive; overwriting drops late frames.
+                latest_frame = await track.recv()
+                new_frame.set()
 
-                # Create camera data
-                camera_data = CameraData(
-                    image=img,
-                    height=img.shape[0],
-                    width=img.shape[1],
-                    encoding="bgr8"
-                )
+        def process(frame, rid):
+            img = frame.to_ndarray(format="bgr24")
+            camera_data = CameraData(
+                image=img,
+                height=img.shape[0],
+                width=img.shape[1],
+                encoding="bgr8"
+            )
+            robot_data = RobotData(
+                robot_id=rid,
+                timestamp=0.0,
+                camera_data=camera_data
+            )
+            self.ros2_publisher.publish_camera_data(robot_data)
 
-                robot_data = RobotData(
-                    robot_id=robot_id,
-                    timestamp=0.0,
-                    camera_data=camera_data
-                )
+        async def processor():
+            nonlocal latest_frame
+            while True:
+                await new_frame.wait()
+                new_frame.clear()
+                frame, latest_frame = latest_frame, None
+                if frame is None:
+                    continue
+                # Offload CPU-bound decode/convert/publish off the event loop.
+                await loop.run_in_executor(None, process, frame, robot_id)
 
-                # Publish via ROS2Publisher
-                self.ros2_publisher.publish_camera_data(robot_data)
-                await asyncio.sleep(0)
-
-            except Exception as e:
-                logger.error(f"Error processing video frame: {e}")
-                break
+        try:
+            await asyncio.gather(reader(), processor())
+        except Exception as e:
+            logger.error(f"Error processing video frame: {e}")
 
     # CycloneDDS callbacks
     def _on_cyclonedds_low_state(self, msg: LowState) -> None:

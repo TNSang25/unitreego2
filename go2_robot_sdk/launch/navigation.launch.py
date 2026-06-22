@@ -19,7 +19,8 @@ def generate_launch_description():
     robot_token = os.getenv('ROBOT_TOKEN', 'af4195d67dd4d585f161f7e0932c2aa8')
     robot_ip = os.getenv('ROBOT_IP', '')
     robot_ip_list = robot_ip.replace(" ", "").split(",") if robot_ip else []
-    map_file = os.getenv('MAP_FILE', '/home/acer/ros2_ws/src/go2_robot_sdk/map/cty.yaml')
+    # `or` thay vì default arg: xử lý cả khi MAP_FILE được set thành rỗng
+    map_file = os.getenv('MAP_FILE') or '/home/dsc-labs/ros2_ws/src/go2_robot_sdk/map/cty.yaml'
     conn_type = os.getenv('CONN_TYPE', 'webrtc')
     
     # Determine connection mode
@@ -87,24 +88,14 @@ def generate_launch_description():
                 'robot_ip': robot_ip,
                 'token': robot_token,
                 'conn_type': conn_type,
-                'enable_video': False
+                'enable_video': False,
+                'lidar_publish_rate': 15.0,   # chặn firehose LiDAR
+                'lidar_voxel_size': 0.06,     # khớp pipeline lúc quét map
             }],
         ),
-        # LiDAR processing node
-        Node(
-            package='lidar_processor_cpp',
-            executable='lidar_to_pointcloud_node',
-            name='lidar_to_pointcloud',
-            remappings=[
-                ('robot0/point_cloud2', 'point_cloud2'),
-            ] if conn_mode == 'single' else [],
-            parameters=[{
-                'robot_ip_lst': robot_ip_list,
-                'map_name': '3d_map',
-                'map_save': 'false'  # Don't save during navigation
-            }],
-        ),
-        # Point cloud aggregator - optimized for real-time navigation
+        # LƯU Ý: lidar_to_pointcloud chỉ cần ở MULTI mode (thêm bên dưới). Single mode
+        # driver đã publish /point_cloud2 -> thêm node này sẽ tự-lặp gây firehose.
+        # Point cloud aggregator - KHỚP mapping.launch.py để scan trùng với map đã lưu
         Node(
             package='lidar_processor_cpp',
             executable='pointcloud_aggregator_node',
@@ -113,15 +104,22 @@ def generate_launch_description():
                 ('cloud_in', '/point_cloud2'),
             ],
             parameters=[{
-                'max_range': 20.0,
-                'min_range': 0.1,
-                'height_filter_min': -2.0,
-                'height_filter_max': 3.0,
+                'max_range': 10.0,
+                'min_range': 0.15,
+                'height_filter_min': 0.2,   # cùng lát cao 0.2-0.4m như lúc quét map -> AMCL khớp
+                'height_filter_max': 0.4,
                 'downsample_rate': 1,
-                'publish_rate': 30.0
+                'publish_rate': 20.0,
+                'voxel_leaf_size': 0.05,
+                'sor_enable': True,
+                'sor_mean_k': 12,
+                'sor_std_dev': 1.0,
+                'ror_enable': True,
+                'ror_radius': 0.15,
+                'ror_min_neighbors': 3,
             }],
         ),
-        # PointCloud to LaserScan converter - optimized for real-time
+        # PointCloud to LaserScan - KHỚP mapping (để AMCL khớp map)
         Node(
             package='pointcloud_to_laserscan',
             executable='pointcloud_to_laserscan_node',
@@ -132,34 +130,36 @@ def generate_launch_description():
             ],
             parameters=[{
                 'target_frame': 'base_link',
-                'max_height': 0.5,
-                'min_height': 0.2,
+                'max_height': 2.0,    # rộng: lọc cao đã làm ở aggregator (lát 0.2-0.4m)
+                'min_height': -1.0,
                 'angle_min': -3.14159,
                 'angle_max': 3.14159,
-                'angle_increment': 0.0174533,
-                'scan_time': 0.033,
-                'range_min': 0.1,
-                'range_max': 20.0,
+                'angle_increment': 0.00872665,
+                'scan_time': 0.1,
+                'range_min': 0.35,    # loại chân/thân robot
+                'range_max': 10.0,
                 'use_inf': True,
-                'concurrency_level': 1,
+                'concurrency_level': 2,
             }],
             output='screen',
         ),
-        # TTS Node
-        Node(
-            package='speech_processor',
-            executable='tts_node',
-            name='tts_node',
-            parameters=[{
-                'api_key': os.getenv('ELEVENLABS_API_KEY', ''),
-                'provider': 'elevenlabs',
-                'voice_name': 'XrExE9yKIg1WjnnlVkGX',
-                'local_playback': False,
-                'use_cache': True,
-                'audio_quality': 'standard'
-            }],
-        ),
     ]
+
+    # Chỉ MULTI mode mới cần gộp robot{i}/point_cloud2 -> /point_cloud2.
+    # Single mode bỏ qua (driver đã publish /point_cloud2; thêm vào sẽ tự-lặp).
+    if conn_mode != 'single':
+        core_nodes.append(
+            Node(
+                package='lidar_processor_cpp',
+                executable='lidar_to_pointcloud_node',
+                name='lidar_to_pointcloud',
+                parameters=[{
+                    'robot_ip_lst': robot_ip_list,
+                    'map_name': '3d_map',
+                    'map_save': 'false',
+                }],
+            )
+        )
     
     # Teleop nodes
     teleop_nodes = [
@@ -220,7 +220,7 @@ def generate_launch_description():
                             'launch', 'localization_launch.py')
             ]),
             launch_arguments={
-                'map': map_arg,
+                'map': map_file,   # truyền thẳng chuỗi đường dẫn (tránh LaunchConfiguration rỗng)
                 'params_file': config_paths['nav2'],
                 'use_sim_time': use_sim_time,
             }.items(),

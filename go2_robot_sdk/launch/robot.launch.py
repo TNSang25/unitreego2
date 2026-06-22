@@ -218,20 +218,6 @@ class Go2NodeFactory:
                     'publish_rate': 10.0
                 }],
             ),
-            # TTS Node (new separate package)
-            Node(
-                package='speech_processor',
-                executable='tts_node',
-                name='tts_node',
-                parameters=[{
-                    'api_key': os.getenv('ELEVENLABS_API_KEY', ''),
-                    'provider': 'elevenlabs',
-                    'voice_name': 'XrExE9yKIg1WjnnlVkGX',
-                    'local_playback': False,
-                    'use_cache': True,
-                    'audio_quality': 'standard'
-                }],
-            ),
         ]
     
     def create_teleop_nodes(self) -> List[Node]:

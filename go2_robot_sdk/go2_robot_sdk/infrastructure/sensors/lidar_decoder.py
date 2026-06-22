@@ -17,22 +17,25 @@ from ament_index_python import get_package_share_directory
 
 
 def update_meshes_for_cloud2(
-    positions: list, 
-    uvs: list, 
-    res: float, 
-    origin: list, 
-    intense_limiter: float
+    positions: list,
+    uvs: list,
+    res: float,
+    origin: list,
+    intense_limiter: float,
+    voxel_leaf: float = 0.0
 ) -> np.ndarray:
     """
     Process LiDAR point cloud data for ROS2 PointCloud2 message.
-    
+
     Args:
         positions: Raw position data from LiDAR
         uvs: UV coordinate data
         res: Resolution factor
         origin: Origin offset coordinates
         intense_limiter: Intensity threshold filter
-        
+        voxel_leaf: Voxel size (m) for downsampling; <=0 keeps native resolution.
+            >0 collapses points to a grid -> far fewer points to serialize/publish.
+
     Returns:
         Processed point cloud array with x,y,z,intensity
     """
@@ -59,9 +62,16 @@ def update_meshes_for_cloud2(
         positions_with_intensities[:, -1] > intense_limiter
     ]
 
-    # Remove duplicate points
-    unique_points = np.unique(filtered_points, axis=0)
-    
+    # Remove duplicate points. With voxel_leaf>0 we dedup on a coarse grid
+    # (one point per voxel) instead of exact rows -> big point-count reduction,
+    # which is what makes create_cloud()/DDS cheap enough to hit the target rate.
+    if voxel_leaf and voxel_leaf > 0.0 and len(filtered_points) > 0:
+        keys = np.floor(filtered_points[:, :3] / voxel_leaf).astype(np.int64)
+        _, idx = np.unique(keys, axis=0, return_index=True)
+        unique_points = filtered_points[idx]
+    else:
+        unique_points = np.unique(filtered_points, axis=0)
+
     return unique_points
 
 

@@ -16,11 +16,15 @@ class RobotConfig:
     publish_raw_voxel: bool
     obstacle_avoidance: bool
     conn_mode: str  # 'single' or 'multi'
+    lidar_voxel_size: float = 0.0  # m; >0 voxel-downsamples LiDAR before publish (0 = off)
+    flatten_base_rp: bool = True   # zero roll/pitch in odom->base_link TF (level scan for 2D SLAM)
 
     @classmethod
-    def from_params(cls, robot_ip: str, token: str, conn_type: str, 
-                   enable_video: bool, decode_lidar: bool, 
-                   publish_raw_voxel: bool, obstacle_avoidance: bool):
+    def from_params(cls, robot_ip: str, token: str, conn_type: str,
+                   enable_video: bool, decode_lidar: bool,
+                   publish_raw_voxel: bool, obstacle_avoidance: bool,
+                   lidar_voxel_size: float = 0.0,
+                   flatten_base_rp: bool = True):
         """Создание конфигурации из параметров"""
         robot_ip_list = robot_ip.replace(" ", "").split(",")
         conn_mode = "single" if (
@@ -34,5 +38,7 @@ class RobotConfig:
             decode_lidar=decode_lidar,
             publish_raw_voxel=publish_raw_voxel,
             obstacle_avoidance=obstacle_avoidance,
-            conn_mode=conn_mode
+            conn_mode=conn_mode,
+            lidar_voxel_size=lidar_voxel_size,
+            flatten_base_rp=flatten_base_rp
         ) 

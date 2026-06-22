@@ -3,6 +3,7 @@
 
 import logging
 import math
+import time
 from typing import Dict, Any
 
 from ...domain.entities import RobotData, RobotState, IMUData, OdometryData, JointData, LidarData
@@ -15,8 +16,16 @@ logger = logging.getLogger(__name__)
 class RobotDataService:
     """Service for processing and validating robot data"""
 
-    def __init__(self, publisher: IRobotDataPublisher):
+    def __init__(self, publisher: IRobotDataPublisher, lidar_max_rate: float = 15.0):
         self.publisher = publisher
+        # The robot streams LiDAR voxel arrays far faster than any SLAM needs
+        # (observed ~1000 Hz / ~350 MB/s), which saturates CPU/DDS and starves
+        # the rest of the pipeline. Throttle to lidar_max_rate Hz; <=0 disables.
+        self._lidar_min_interval = (1.0 / lidar_max_rate) if lidar_max_rate > 0 else 0.0
+        self._last_lidar_time = 0.0
+        # Đo tần số robot gửi voxel-map thật (trước throttle) -> biết trần nguồn dữ liệu
+        self._raw_lidar_count = 0
+        self._raw_log_t = time.monotonic()
 
     def process_webrtc_message(self, msg: Dict[str, Any], robot_id: str) -> None:
         """Process WebRTC message"""
@@ -25,6 +34,25 @@ class RobotDataService:
             robot_data = RobotData(robot_id=robot_id, timestamp=0.0)
 
             if topic == RTC_TOPIC["ULIDAR_ARRAY"]:
+                # Mỗi frame tới đây = robot đã gửi 1 voxel-map (WASM decode chạy eager
+                # ở tầng WebRTC trước đó). Đếm để biết robot gửi bao nhiêu Hz.
+                self._raw_lidar_count += 1
+                _t = time.monotonic()
+                if _t - self._raw_log_t > 5.0:
+                    try:
+                        self.publisher.node.get_logger().info(
+                            f"[lidar-raw] robot gui ~"
+                            f"{self._raw_lidar_count / (_t - self._raw_log_t):.1f} Hz (truoc throttle)")
+                    except Exception:
+                        pass
+                    self._raw_lidar_count = 0
+                    self._raw_log_t = _t
+                # Drop excess frames BEFORE the expensive WASM voxel decode.
+                if self._lidar_min_interval > 0.0:
+                    now = time.monotonic()
+                    if (now - self._last_lidar_time) < self._lidar_min_interval:
+                        return
+                    self._last_lidar_time = now
                 self._process_lidar_data(msg, robot_data)
                 self.publisher.publish_lidar_data(robot_data)
                 self.publisher.publish_voxel_data(robot_data)

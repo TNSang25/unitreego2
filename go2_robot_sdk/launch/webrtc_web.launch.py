@@ -116,7 +116,7 @@ def generate_launch_description():
                     "qos_overrides": {
                         "/camera/image_raw": {
                             "publisher": {
-                                "reliability": "reliable",
+                                "reliability": "best_effort",
                                 "history": "keep_last",
                                 "depth": 1,
                             }
@@ -151,18 +151,6 @@ def generate_launch_description():
                 }],
                 on_exit=on_exit,
                 condition=IfCondition(LaunchConfiguration('enable_foxglove_bridge')),
-            ),
-
-            # TTS node
-            Node(
-                package='go2_robot_sdk',
-                executable='tts_node',
-                name='tts_node',
-                parameters=[{
-                    'elevenlabs_api_key': elevenlabs_api_key,
-                    'voice_name': voice_name
-                }],
-                on_exit=on_exit,
             ),
         ]),
 
