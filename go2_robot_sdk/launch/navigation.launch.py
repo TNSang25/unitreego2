@@ -88,7 +88,7 @@ def generate_launch_description():
                 'robot_ip': robot_ip,
                 'token': robot_token,
                 'conn_type': conn_type,
-                'enable_video': False,
+                'enable_video': True,
                 'lidar_publish_rate': 15.0,   # chặn firehose LiDAR
                 'lidar_voxel_size': 0.06,     # khớp pipeline lúc quét map
             }],
